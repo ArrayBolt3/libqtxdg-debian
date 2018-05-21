@@ -26,7 +26,7 @@ else()
 endif()
 
 set(QTXDG_MAJOR_VERSION 3)
-set(QTXDG_MINOR_VERSION 1)
+set(QTXDG_MINOR_VERSION 2)
 set(QTXDG_PATCH_VERSION 0)
 set(QTXDG_VERSION_STRING ${QTXDG_MAJOR_VERSION}.${QTXDG_MINOR_VERSION}.${QTXDG_PATCH_VERSION})
 
@@ -35,6 +35,7 @@ set(QT_MINIMUM_VERSION "5.6.1")
 include(GNUInstallDirs)             # Standard directories for installation
 include(CMakePackageConfigHelpers)
 include(GenerateExportHeader)
+include(prevent_in_source_builds)
 include(create_portable_headers)
 include(create_pkgconfig_file)
 include(compiler_settings NO_POLICY_SCOPE)

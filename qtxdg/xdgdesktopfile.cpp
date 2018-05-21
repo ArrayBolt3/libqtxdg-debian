@@ -1,8 +1,8 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
  * (c)LGPL2+
  *
- * Razor - a lightweight, Qt based, desktop toolset
- * http://razor-qt.org
+ * LXQt - a lightweight, Qt based, desktop toolset
+ * https://lxqt.org
  *
  * Copyright: 2010-2011 Razor team
  * Authors:
@@ -463,7 +463,8 @@ bool XdgDesktopFileData::startApplicationDetached(const XdgDesktopFile *q, const
         if (started)
         {
             QProcess* proc = p.take(); //release the pointer(will be selfdestroyed upon finish)
-            QObject::connect(proc, SIGNAL(finished(int, QProcess::ExitStatus)), proc, SLOT(deleteLater()));
+            QObject::connect(proc, static_cast<void (QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished),
+                proc, &QProcess::deleteLater);
         }
         return started;
     }
@@ -527,7 +528,7 @@ bool XdgDesktopFileData::startByDBus(const QString & action, const QStringList& 
     //Note: after the QDBusInterface construction, it can *invalid* (has reasonable lastError())
     // but this can be due to some intermediate DBus call(s) which doesn't need to be fatal and
     // our next call() can succeed
-    // see discussion https://github.com/lxde/libqtxdg/pull/75
+    // see discussion https://github.com/lxqt/libqtxdg/pull/75
     if (app.lastError().isValid())
     {
         qWarning().noquote() << "XdgDesktopFileData::startByDBus: invalid interface:" << app.lastError().message()
@@ -558,7 +559,7 @@ QStringList XdgDesktopFileData::getListValue(const XdgDesktopFile * q, const QSt
             return QStringList();
     }
 
-    return q->value(key).toString().split(QLatin1Char(';'), QString::SkipEmptyParts);
+    return q->value(used_key).toString().split(QLatin1Char(';'), QString::SkipEmptyParts);
 }
 
 
@@ -1518,7 +1519,8 @@ bool writeDesktopFile(QIODevice & device, const QSettings::SettingsMap & map)
         }
         else /* if (isStringList) */
         {
-            for (const QString &value: it.value().toStringList())
+            const auto values = it.value().toStringList();
+            for (const QString &value : values)
             {
                 stream << value << QLatin1Char(';');
             }

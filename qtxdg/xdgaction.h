@@ -1,8 +1,8 @@
 /* BEGIN_COMMON_COPYRIGHT_HEADER
  * (c)LGPL2+
  *
- * Razor - a lightweight, Qt based, desktop toolset
- * http://razor-qt.org
+ * LXQt - a lightweight, Qt based, desktop toolset
+ * https://lxqt.org
  *
  * Copyright: 2010-2011 Razor team
  * Authors:
@@ -71,9 +71,11 @@ public:
 
     const XdgDesktopFile& desktopFile() const { return mDesktopFile; }
 
+public Q_SLOTS:
+    void updateIcon();
+
 private Q_SLOTS:
     void runConmmand() const;
-    void updateIcon();
 
 private:
     void load(const XdgDesktopFile& desktopFile);
