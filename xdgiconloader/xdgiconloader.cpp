@@ -48,6 +48,7 @@
 #include <QtGui/QPainter>
 #include <QImageReader>
 #include <QXmlStreamReader>
+#include <QFileSystemWatcher>
 
 #ifdef Q_DEAD_CODE_FROM_QT4_MAC
 #include <private/qt_cocoa_helpers_mac_p.h>
@@ -109,7 +110,9 @@ public:
     explicit QIconCacheGtkReader(const QString &themeDir);
     QVector<const char *> lookup(const QStringRef &);
     bool isValid() const { return m_isValid; }
+    bool reValid(bool infoRefresh);
 private:
+    QFileInfo m_cacheFileInfo;
     QFile m_file;
     const unsigned char *m_data;
     quint64 m_size;
@@ -133,38 +136,73 @@ private:
             | m_data[offset+1] << 16 | m_data[offset] << 24;
     }
 };
+Q_GLOBAL_STATIC(QFileSystemWatcher, gtkCachesWatcher);
 
 
 QIconCacheGtkReader::QIconCacheGtkReader(const QString &dirName)
-    : m_isValid(false)
+    : m_cacheFileInfo{dirName + QLatin1String("/icon-theme.cache")}
+    , m_data(nullptr)
+    , m_isValid(false)
 {
-    QFileInfo info(dirName + QLatin1String("/icon-theme.cache"));
-    if (!info.exists() || info.lastModified() < QFileInfo(dirName).lastModified())
-        return;
-    m_file.setFileName(info.absoluteFilePath());
+    m_file.setFileName(m_cacheFileInfo.absoluteFilePath());
+    // Note: The cache file can be (IS) removed and newly created during the
+    // cache update. But we hold open file descriptor for the "old" removed
+    // file. So we need to watch the changes and reopen/remap the file.
+    QObject::connect(gtkCachesWatcher(), &QFileSystemWatcher::fileChanged, &m_file, [this](const QString & path)
+        {
+            if (m_file.fileName() == path)
+            {
+                m_isValid = false;
+                // invalidate icons to reload them ...
+                QIconLoader::instance()->invalidateKey();
+            }
+        });
+    reValid(false);
+}
+
+bool QIconCacheGtkReader::reValid(bool infoRefresh)
+{
+    if (m_data)
+        m_file.unmap(const_cast<unsigned char *>(m_data));
+    m_file.close();
+
+    if (infoRefresh)
+        m_cacheFileInfo.refresh();
+
+    const QDir dir = m_cacheFileInfo.absoluteDir();
+
+    if (!m_cacheFileInfo.exists() || m_cacheFileInfo.lastModified() < QFileInfo{dir.absolutePath()}.lastModified())
+        return m_isValid;
+
+    // Note: If the file is removed, it is also silently removed from watched
+    // paths in QFileSystemWatcher.
+    if (!gtkCachesWatcher->files().contains(m_cacheFileInfo.absoluteFilePath()))
+        gtkCachesWatcher->addPath(m_cacheFileInfo.absoluteFilePath());
+
     if (!m_file.open(QFile::ReadOnly))
-        return;
+        return m_isValid;
     m_size = m_file.size();
     m_data = m_file.map(0, m_size);
     if (!m_data)
-        return;
+        return m_isValid;
     if (read16(0) != 1) // VERSION_MAJOR
-        return;
+        return m_isValid;
 
     m_isValid = true;
 
     // Check that all the directories are older than the cache
-    auto lastModified = info.lastModified();
+    auto lastModified = m_cacheFileInfo.lastModified();
     quint32 dirListOffset = read32(8);
     quint32 dirListLen = read32(dirListOffset);
     for (uint i = 0; i < dirListLen; ++i) {
         quint32 offset = read32(dirListOffset + 4 + 4 * i);
-        if (!m_isValid || offset >= m_size || lastModified < QFileInfo(dirName + QLatin1Char('/')
-                + QString::fromUtf8(reinterpret_cast<const char*>(m_data + offset))).lastModified()) {
+        if (!m_isValid || offset >= m_size || lastModified < QFileInfo(dir
+                    , QString::fromUtf8(reinterpret_cast<const char*>(m_data + offset))).lastModified()) {
             m_isValid = false;
-            return;
+            return m_isValid;
         }
     }
+    return m_isValid;
 }
 
 static quint32 icon_name_hash(const char *p)
@@ -333,8 +371,8 @@ XdgIconTheme::XdgIconTheme(const QString &themeName)
  * intentionally.
  *
  * Ref.
- * https://github.com/lxde/lxqt/issues/1252
- * https://github.com/lxde/libqtxdg/pull/116
+ * https://github.com/lxqt/lxqt/issues/1252
+ * https://github.com/lxqt/libqtxdg/pull/116
  */
 QThemeIconInfo XdgIconLoader::findIconHelper(const QString &themeName,
                                  const QString &iconName,
@@ -379,7 +417,7 @@ QThemeIconInfo XdgIconLoader::findIconHelper(const QString &themeName,
             // Try to reduce the amount of subDirs by looking in the GTK+ cache in order to save
             // a massive amount of file stat (especially if the icon is not there)
             auto cache = theme.m_gtkCaches.at(i);
-            if (cache->isValid()) {
+            if (cache->isValid() || cache->reValid(true)) {
                 const auto result = cache->lookup(iconNameFallback);
                 if (cache->isValid()) {
                     const QVector<QIconDirInfo> subDirsCopy = subDirs;
@@ -786,81 +824,87 @@ QPixmap ScalableEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State 
 }
 
 
-// XXX: duplicated from qicon.cpp, because the symbol qt_iconEngineFactoryLoader isn't exported :(
-Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, qt_iconEngineFactoryLoader,
-        (QIconEngineFactoryInterface_iid, QLatin1String("/iconengines"), Qt::CaseInsensitive))
-//extern QFactoryLoader *qt_iconEngineFactoryLoader(); // qicon.cpp
-
 QPixmap ScalableFollowsColorEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
 {
-    QIcon & icon = QIcon::Selected == mode ? svgSelectedIcon : svgIcon;
-    if (icon.isNull())
+    QPixmap pm = svgIcon.pixmap(size, mode, state);
+    // Note: not checking the QIcon::isNull(), because in Qt5.10 the isNull() is not reliable
+    // for svg icons desierialized from stream (see https://codereview.qt-project.org/#/c/216086/)
+    if (pm.isNull())
     {
         // The following lines are adapted and updated from KDE's "kiconloader.cpp" ->
         // KIconLoaderPrivate::processSvg() and KIconLoaderPrivate::createIconImage().
         // They read the SVG color scheme of SVG icons and give images based on the icon mode.
-        QByteArray processedContents;
-        QFile device{filename};;
+        QHash<int, QByteArray> svg_buffers;
+        QFile device{filename};
         if (device.open(QIODevice::ReadOnly))
         {
             const QPalette pal = qApp->palette();
-            QString styleSheet = QStringLiteral(".ColorScheme-Text{color:%1;}")
-                .arg(mode == QIcon::Selected
-                        ? pal.highlightedText().color().name()
-                        : pal.windowText().color().name());
+            // Note: indexes are assembled as in qtsvg (QSvgIconEnginePrivate::hashKey())
+            QMap<int, QString> style_sheets;
+            style_sheets[(QIcon::Normal<<4)|QIcon::Off] = QStringLiteral(".ColorScheme-Text{color:%1;}").arg(pal.windowText().color().name());
+            style_sheets[(QIcon::Selected<<4)|QIcon::Off] = QStringLiteral(".ColorScheme-Text{color:%1;}").arg(pal.highlightedText().color().name());
+            QMap<int, QSharedPointer<QXmlStreamWriter> > writers;
+            for (auto i = style_sheets.cbegin(); i != style_sheets.cend(); ++i)
+            {
+                writers[i.key()].reset(new QXmlStreamWriter{&svg_buffers[i.key()]});
+            }
+
             QXmlStreamReader xmlReader(&device);
-            QXmlStreamWriter writer(&processedContents);
             while (!xmlReader.atEnd())
             {
                 if (xmlReader.readNext() == QXmlStreamReader::StartElement
                         && xmlReader.qualifiedName() == QLatin1String("style")
                         && xmlReader.attributes().value(QLatin1String("id")) == QLatin1String("current-color-scheme"))
                 {
-                    writer.writeStartElement(QLatin1String("style"));
-                    writer.writeAttributes(xmlReader.attributes());
-                    writer.writeCharacters(styleSheet);
-                    writer.writeEndElement();
+                    for (auto i = style_sheets.cbegin(); i != style_sheets.cend(); ++i)
+                    {
+                        QXmlStreamWriter & writer = *writers[i.key()];
+                        writer.writeStartElement(QLatin1String("style"));
+                        writer.writeAttributes(xmlReader.attributes());
+                        writer.writeCharacters(*i);
+                        writer.writeEndElement();
+                    }
                     while (xmlReader.tokenType() != QXmlStreamReader::EndElement)
                         xmlReader.readNext();
+                } else if (xmlReader.tokenType() != QXmlStreamReader::Invalid)
+                {
+                    for (auto i = style_sheets.cbegin(); i != style_sheets.cend(); ++i)
+                    {
+                        writers[i.key()]->writeCurrentToken(xmlReader);
+                    }
                 }
-                else if (xmlReader.tokenType() != QXmlStreamReader::Invalid)
-                    writer.writeCurrentToken(xmlReader);
             }
+            // duplicate the contets also for opposite state
+            svg_buffers[(QIcon::Normal<<4)|QIcon::On] = svg_buffers[(QIcon::Normal<<4)|QIcon::Off];
+            svg_buffers[(QIcon::Selected<<4)|QIcon::On] = svg_buffers[(QIcon::Selected<<4)|QIcon::Off];
         }
         // use the QSvgIconEngine
-        //  - assemble the content as it is done by the QSvgIconEngine::write() (operator <<)
-        //  - create the QIcon with QSvgIconEngine initialized from the content
-        const int index = qt_iconEngineFactoryLoader()->indexOf(QStringLiteral("svg"));
-        if (index != -1)
-        {
-            if (QIconEnginePlugin * factory = qobject_cast<QIconEnginePlugin*>(qt_iconEngineFactoryLoader()->instance(index)))
-            {
-                if (QIconEngine * engine = factory->create())
-                {
-                    QByteArray engine_arr;
-                    QDataStream str{&engine_arr, QIODevice::WriteOnly};
-                    str.setVersion(QDataStream::Qt_4_4);
-                    QHash<int, QString> filenames;
-                    filenames[0] = filename;
-                    QHash<int, QByteArray> svg_buffers;
-                    svg_buffers[0] = processedContents;
-                    str << filenames << static_cast<int>(0)/*isCompressed*/ << svg_buffers << static_cast<int>(0)/*hasAddedPimaps*/;
+        //  - assemble the content as it is done by the operator <<(QDataStream &s, const QIcon &icon)
+        //  (the QSvgIconEngine::key() + QSvgIconEngine::write())
+        //  - create the QIcon from the content by usage of the QIcon::operator >>(QDataStream &s, const QIcon &icon)
+        //  (icon with the (QSvgIconEngine) will be used)
+        QByteArray icon_arr;
+        QDataStream str{&icon_arr, QIODevice::WriteOnly};
+        str.setVersion(QDataStream::Qt_4_4);
+        QHash<int, QString> filenames;
+        filenames[0] = filename; // Note: filenames are ignored in the QSvgIconEngine::read()
+        str << QStringLiteral("svg") << filenames << static_cast<int>(0)/*isCompressed*/ << svg_buffers << static_cast<int>(0)/*hasAddedPimaps*/;
 
-                    QDataStream str_read{&engine_arr, QIODevice::ReadOnly};
-                    str_read.setVersion(QDataStream::Qt_4_4);
+        QDataStream str_read{&icon_arr, QIODevice::ReadOnly};
+        str_read.setVersion(QDataStream::Qt_4_4);
 
-                    engine->read(str_read);
-                    icon = QIcon{engine};
-                }
-            }
-        }
+        str_read >> svgIcon;
+        pm = svgIcon.pixmap(size, mode, state);
 
         // load the icon directly from file, if still null
-        if (icon.isNull())
-            icon = QIcon(filename);
+        if (pm.isNull())
+        {
+            svgIcon = QIcon(filename);
+            pm = svgIcon.pixmap(size, mode, state);
+        }
     }
 
-    return icon.pixmap(size, mode, state);
+    return pm;
 }
 
 QPixmap XdgIconLoaderEngine::pixmap(const QSize &size, QIcon::Mode mode,

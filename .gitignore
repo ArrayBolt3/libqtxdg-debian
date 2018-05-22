@@ -1,13 +1,13 @@
-/*.debhelper
-/*.log
-/*.substvars
-/debhelper-build-stamp
-/files
+debian/*.debhelper
+debian/*.log
+debian/*.substvars
+debian/debhelper-build-stamp
+debian/files
 
 
-/libqt5xdg2/
-/libqt5xdg-dev/
-/libqt5xdgiconloader-dev/
-/libqt5xdgiconloader2/
-/qtxdg-dev-tools/
-/tmp
+debian/libqt5xdg3/
+debian/libqt5xdg-dev/
+debian/libqt5xdgiconloader-dev/
+debian/libqt5xdgiconloader3/
+debian/qtxdg-dev-tools/
+debian/tmp
