@@ -25,6 +25,7 @@ Depends: ${shlibs:Depends},
          ${misc:Depends},
          file,
          libfile-mimeinfo-perl,
+         libglib2.0-bin,
          shared-mime-info
 Recommends: qttranslations5-l10n
 Pre-Depends: ${misc:Pre-Depends}
