@@ -25,3 +25,4 @@ To build and install run `make` and `make install`respectively.
 
 The library is provided by all major Linux distributions like Arch Linux, Debian, Fedora and openSUSE.   
 Just use the distributions' package managers to search for string `libqtxdg`.
+

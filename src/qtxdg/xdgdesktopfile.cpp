@@ -300,6 +300,15 @@ namespace
 class XdgDesktopFileData: public QSharedData {
 public:
     XdgDesktopFileData();
+
+    inline void clear() {
+        mFileName.clear();
+        mIsValid = false;
+        mValidIsChecked = false;
+        mIsShow.clear();
+        mItems.clear();
+        mType = XdgDesktopFile::UnknownType;
+    }
     bool read(const QString &prefix);
     XdgDesktopFile::Type detectType(XdgDesktopFile *q) const;
     bool startApplicationDetached(const XdgDesktopFile *q, const QString & action, const QStringList& urls) const;
@@ -487,7 +496,7 @@ bool XdgDesktopFileData::startLinkDetached(const XdgDesktopFile *q) const
 
     QString scheme = QUrl(url).scheme();
 
-    if (scheme.isEmpty() || scheme.toUpper() == QLatin1String("FILE"))
+    if (scheme.isEmpty() || scheme == QLatin1String("file"))
     {
         // Local file
         QFileInfo fi(url);
@@ -620,14 +629,19 @@ bool XdgDesktopFile::operator==(const XdgDesktopFile &other) const
 
 bool XdgDesktopFile::load(const QString& fileName)
 {
+    d->clear();
     if (fileName.startsWith(QDir::separator())) { // absolute path
         QFileInfo f(fileName);
         if (f.exists())
             d->mFileName = f.canonicalFilePath();
         else
-            d->mFileName = QString();
+            return false;
     } else { // relative path
-        d->mFileName = findDesktopFile(fileName);
+        const QString r = findDesktopFile(fileName);
+        if (r.isEmpty())
+            return false;
+        else
+            d->mFileName = r;
     }
     d->read(prefix());
     d->mIsValid = d->mIsValid && check();
@@ -989,7 +1003,6 @@ QString expandEnvVariables(const QString str)
         scheme == QLatin1String("irc")    ||
         scheme == QLatin1String("telnet") ||
         scheme == QLatin1String("xmpp")   ||
-        scheme == QLatin1String("irc")    ||
         scheme == QLatin1String("nfs")
       )
         return str;

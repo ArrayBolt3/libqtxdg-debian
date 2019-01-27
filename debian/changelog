@@ -1,3 +1,14 @@
+libqtxdg (3.3.0-1) unstable; urgency=medium
+
+  * Cherry-picked new upstream-release 3.3.0
+  * Bumped Standards to 4.3.0, no changes needed
+  * Dropped d/compat, use debhelper-compat = 12, no changes needed
+  * Added Build-Depends-Package field to symbols
+  * Fixed the location of some files in d/copyright
+  * Fixed years in d/copyright
+
+ -- Alf Gaida <agaida@siduction.org>  Sun, 27 Jan 2019 12:49:28 +0100
+
 libqtxdg (3.2.0-2) unstable; urgency=medium
 
   * Added libqtxdg dependency libglib2.0-bin
