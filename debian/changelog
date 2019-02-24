@@ -1,3 +1,11 @@
+libqtxdg (3.3.1-1) unstable; urgency=medium
+
+  * Cherry-picked new upstream-release 3.3.1.
+  * Added build dependency lxqt-build-tools (>= 0.6.0)
+  * Removed some cmake files from debian/copyright
+
+ -- Alf Gaida <agaida@siduction.org>  Sun, 24 Feb 2019 17:18:32 +0100
+
 libqtxdg (3.3.0-1) unstable; urgency=medium
 
   * Cherry-picked new upstream-release 3.3.0
