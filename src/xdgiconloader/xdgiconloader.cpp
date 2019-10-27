@@ -729,7 +729,7 @@ QIconLoaderEngineEntry *XdgIconLoaderEngine::entryForSize(const QSize &size, int
 
     // Find the minimum distance icon
     int minimalSize = INT_MAX;
-    QIconLoaderEngineEntry *closestMatch = 0;
+    QIconLoaderEngineEntry *closestMatch = nullptr;
     for (int i = 0; i < numEntries; ++i) {
         QIconLoaderEngineEntry *entry = m_info.entries.at(i);
         int distance = directorySizeDistance(entry->dir, iconsize, scale);
@@ -771,7 +771,7 @@ QSize XdgIconLoaderEngine::actualSize(const QSize &size, QIcon::Mode mode,
                 dir_size = qMin(pix_size.width(), pix_size.height());
             }
             int result = qMin(dir_size, qMin(size.width(), size.height()));
-            return QSize(result, result);
+            return {result, result};
         }
     }
     return {0, 0};
@@ -848,8 +848,8 @@ QPixmap ScalableFollowsColorEntry::pixmap(const QSize &size, QIcon::Mode mode, Q
             const QPalette pal = qApp->palette();
             // Note: indexes are assembled as in qtsvg (QSvgIconEnginePrivate::hashKey())
             QMap<int, QString> style_sheets;
-            style_sheets[(QIcon::Normal<<4)|QIcon::Off] = STYLE.arg(pal.windowText().color().name()).arg(pal.window().color().name()).arg(pal.highlight().color().name());
-            style_sheets[(QIcon::Selected<<4)|QIcon::Off] = STYLE.arg(pal.highlightedText().color().name()).arg(pal.highlight().color().name()).arg(pal.highlightedText().color().name());
+            style_sheets[(QIcon::Normal<<4)|QIcon::Off] = STYLE.arg(pal.windowText().color().name(), pal.window().color().name(), pal.highlight().color().name());
+            style_sheets[(QIcon::Selected<<4)|QIcon::Off] = STYLE.arg(pal.highlightedText().color().name(), pal.highlight().color().name(), pal.highlightedText().color().name());
             QMap<int, QSharedPointer<QXmlStreamWriter> > writers;
             for (auto i = style_sheets.cbegin(); i != style_sheets.cend(); ++i)
             {

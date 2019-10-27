@@ -30,8 +30,10 @@
 #include "xdgdesktopfile_p.h"
 #include "xdgdirs.h"
 #include "xdgicon.h"
+#include "application_interface.h" // generated interface for DBus org.freedesktop.Application
+#include "xdgmimeapps.h"
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <unistd.h>
 
 #include <QDebug>
@@ -47,6 +49,7 @@
 #include <QMimeDatabase>
 #include <QMimeType>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTextStream>
@@ -98,8 +101,28 @@ bool read(const QString &prefix);
 void replaceVar(QString &str, const QString &varName, const QString &after);
 QString &unEscape(QString& str);
 QString &unEscapeExec(QString& str);
-void loadMimeCacheDir(const QString& dirName, QHash<QString, QList<XdgDesktopFile*> > & cache);
 
+namespace
+{
+    //! Simple helper for getting timeout for starting of DBus activatable applications
+    class DBusActivateTimeout
+    {
+    private:
+        int mTimeoutMs;
+        DBusActivateTimeout()
+        {
+            bool ok;
+            mTimeoutMs = qEnvironmentVariableIntValue("QTXDG_DBUSACTIVATE_TIMEOUT", &ok);
+            if (!ok)
+                mTimeoutMs = 1500;
+        }
+        static DBusActivateTimeout msInstance;
+    public:
+        static const DBusActivateTimeout & instance() { return msInstance; }
+        operator int() const { return mTimeoutMs; }
+    };
+    DBusActivateTimeout DBusActivateTimeout::msInstance;
+}
 
 QString &doEscape(QString& str, const QHash<QChar,QChar> &repl)
 {
@@ -169,7 +192,7 @@ QString &escapeExec(QString& str)
 QString &doUnEscape(QString& str, const QHash<QChar,QChar> &repl)
 {
     int n = 0;
-    while (1)
+    while (true)
     {
         n=str.indexOf(QLatin1String("\\"), n);
         if (n < 0 || n > str.length() - 2)
@@ -290,7 +313,7 @@ namespace
         {}
 
     protected:
-        virtual QString prefix() const { return m_prefix; }
+        QString prefix() const override { return m_prefix; }
 
     private:
         const QString m_prefix;
@@ -446,7 +469,7 @@ bool XdgDesktopFileData::startApplicationDetached(const XdgDesktopFile *q, const
     bool nonDetach = false;
     for (const QString &s : nonDetachExecs)
     {
-        for (const QString &a : const_cast<const QStringList&>(args))
+        for (const QString &a : qAsConst(args))
         {
             if (a.contains(s))
             {
@@ -502,8 +525,9 @@ bool XdgDesktopFileData::startLinkDetached(const XdgDesktopFile *q) const
         QFileInfo fi(url);
 
         QMimeDatabase db;
+        XdgMimeApps appsDb;
         QMimeType mimeInfo = db.mimeTypeForFile(fi);
-        XdgDesktopFile* desktopFile = XdgDesktopFileCache::getDefaultApp(mimeInfo.name());
+        XdgDesktopFile* desktopFile = appsDb.defaultApp(mimeInfo.name());
 
         if (desktopFile)
             return desktopFile->startDetached(url);
@@ -533,7 +557,7 @@ bool XdgDesktopFileData::startByDBus(const QString & action, const QStringList& 
                 ", assembled DBus object path" << path << "is invalid!";
         return false;
     }
-    QDBusInterface app(f.completeBaseName(), path, QLatin1String("org.freedesktop.Application"));
+    org::freedesktop::Application app{f.completeBaseName(), path, QDBusConnection::sessionBus()};
     //Note: after the QDBusInterface construction, it can *invalid* (has reasonable lastError())
     // but this can be due to some intermediate DBus call(s) which doesn't need to be fatal and
     // our next call() can succeed
@@ -543,19 +567,28 @@ bool XdgDesktopFileData::startByDBus(const QString & action, const QStringList& 
         qWarning().noquote() << "XdgDesktopFileData::startByDBus: invalid interface:" << app.lastError().message()
             << ", but trying to continue...";
     }
-    QDBusMessage reply;
+    app.setTimeout(DBusActivateTimeout::instance());
+    QDBusPendingReply<> reply;
     if (!action.isEmpty())
     {
         QList<QVariant> v_urls;
         for (const auto & url : urls)
              v_urls.append(url);
-        reply = app.call(QLatin1String("ActivateAction"), action, v_urls, platformData);
+        reply = app.ActivateAction(action, v_urls, platformData);
     } else if (urls.isEmpty())
-        reply = app.call(QLatin1String("Activate"), platformData);
+        reply = app.Activate(platformData);
     else
-        reply = app.call(QLatin1String("Open"), urls, platformData);
+        reply = app.Open(urls, platformData);
 
-    return QDBusMessage::ErrorMessage != reply.type();
+    reply.waitForFinished();
+    if (QDBusMessage::ErrorMessage == reply.reply().type())
+    {
+        qWarning().noquote().nospace() << "XdgDesktopFileData::startByDBus(timeout=" << DBusActivateTimeout::instance()
+            << "): failed to start org.freedesktop.Application" << mFileName << ": " << reply.reply();
+        return false;
+    }
+
+    return true;
 }
 
 QStringList XdgDesktopFileData::getListValue(const XdgDesktopFile * q, const QString & key, bool tryExtendPrefix) const
@@ -985,8 +1018,8 @@ static QStringList parseCombinedArgString(const QString &program)
 
 void replaceVar(QString &str, const QString &varName, const QString &after)
 {
-    str.replace(QRegExp(QString::fromLatin1("\\$%1(?!\\w)").arg(varName)), after);
-    str.replace(QRegExp(QString::fromLatin1("\\$\\{%1\\}").arg(varName)), after);
+    str.replace(QRegularExpression(QString::fromLatin1(R"regexp(\$%1(?!\w))regexp").arg(varName)), after);
+    str.replace(QRegularExpression(QString::fromLatin1(R"(\$\{%1\})").arg(varName)), after);
 }
 
 
@@ -1010,7 +1043,7 @@ QString expandEnvVariables(const QString str)
     const QString homeDir = QFile::decodeName(qgetenv("HOME"));
 
     QString res = str;
-    res.replace(QRegExp(QString::fromLatin1("~(?=$|/)")), homeDir);
+    res.replace(QRegularExpression(QString::fromLatin1("~(?=$|/)")), homeDir);
 
     replaceVar(res, QLatin1String("HOME"), homeDir);
     replaceVar(res, QLatin1String("USER"), QString::fromLocal8Bit(qgetenv("USER")));
@@ -1351,7 +1384,7 @@ QString findDesktopFile(const QString& desktopName)
     QStringList dataDirs = XdgDirs::dataDirs();
     dataDirs.prepend(XdgDirs::dataHome(false));
 
-    for (const QString &dirName : const_cast<const QStringList&>(dataDirs))
+    for (const QString &dirName : qAsConst(dataDirs))
     {
         QString f = findDesktopFile(dirName + QLatin1String("/applications"), desktopName);
         if (!f.isEmpty())
@@ -1608,47 +1641,6 @@ XdgDesktopFile* XdgDesktopFileCache::load(const QString& fileName)
 }
 
 
-void loadMimeCacheDir(const QString& dirName, QHash<QString, QList<XdgDesktopFile*> > & cache)
-{
-    QDir dir(dirName);
-    // Directories have the type "application/x-directory", but in the desktop file
-    // are shown as "inode/directory". To handle these cases, we use this hash.
-    QHash<QString, QString> specials;
-    specials.insert(QLatin1String("inode/directory"), QLatin1String("application/x-directory"));
-
-
-    // Working recursively ............
-    const QFileInfoList files = dir.entryInfoList(QStringList(), QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QFileInfo &f : files)
-    {
-        if (f.isDir())
-        {
-            loadMimeCacheDir(f.absoluteFilePath(), cache);
-            continue;
-        }
-
-
-        XdgDesktopFile* df = XdgDesktopFileCache::getFile(f.absoluteFilePath());
-        if (!df)
-            continue;
-
-        const QStringList mimes = df->value(mimeTypeKey).toString().split(QLatin1Char(';'), QString::SkipEmptyParts);
-
-        for (const QString &mime : mimes)
-        {
-            int pref = df->value(initialPreferenceKey, 0).toInt();
-            // We move the desktopFile forward in the list for this mime, so that
-            // no desktopfile in front of it have a lower initialPreference.
-            int position = cache[mime].length();
-            while (position > 0 && cache[mime][position - 1]->value(initialPreferenceKey, 0).toInt() < pref)
-            {
-                position--;
-            }
-            cache[mime].insert(position, df);
-        }
-    }
-}
-
 QSettings::Format XdgDesktopFileCache::desktopFileSettingsFormat()
 {
     static QSettings::Format format = QSettings::InvalidFormat;
@@ -1678,10 +1670,9 @@ void XdgDesktopFileCache::initialize()
     QStringList dataDirs = XdgDirs::dataDirs();
     dataDirs.prepend(XdgDirs::dataHome(false));
 
-    for (const QString &dirname : const_cast<const QStringList&>(dataDirs))
+    for (const QString &dirname : qAsConst(dataDirs))
     {
         initialize(dirname + QLatin1String("/applications"));
-//        loadMimeCacheDir(dirname + "/applications", m_defaultAppsCache);
     }
 }
 
@@ -1720,7 +1711,7 @@ XdgDesktopFile* XdgDesktopFileCache::getDefaultApp(const QString& mimetype)
     mimeDirsList.append(XdgDirs::dataHome(false) + QLatin1String("/applications"));
     mimeDirsList.append(XdgDirs::dataDirs(QLatin1String("/applications")));
 
-    for (const QString &mimeDir : const_cast<const QStringList&>(mimeDirsList))
+    for (const QString &mimeDir : qAsConst(mimeDirsList))
     {
         QString defaultsListPath = mimeDir + QLatin1String("/mimeapps.list");
         if (QFileInfo::exists(defaultsListPath))
