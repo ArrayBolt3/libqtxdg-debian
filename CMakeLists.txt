@@ -13,15 +13,17 @@ option(BUILD_DEV_UTILS "Builds and install development utils" OFF)
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(QTXDG_MAJOR_VERSION 3)
-set(QTXDG_MINOR_VERSION 3)
-set(QTXDG_PATCH_VERSION 1)
+set(QTXDG_MINOR_VERSION 4)
+set(QTXDG_PATCH_VERSION 0)
 set(QTXDG_VERSION_STRING ${QTXDG_MAJOR_VERSION}.${QTXDG_MINOR_VERSION}.${QTXDG_PATCH_VERSION})
 
 set(LXQTBT_MINIMUM_VERSION "0.6.0")
 set(QT_MINIMUM_VERSION "5.7.1")
+set(GLIB_MINIMUM_VERSION "2.41.0") # Mime Apps new implementation
 
 find_package(lxqt-build-tools ${LXQTBT_MINIMUM_VERSION} REQUIRED)
 find_package(Qt5 ${QT_MINIMUM_VERSION} CONFIG REQUIRED Widgets Svg Xml DBus)
+find_package(GLIB ${GLIB_MINIMUM_VERSION} REQUIRED COMPONENTS gobject gio gio-unix)
 
 include(GNUInstallDirs)             # Standard directories for installation
 include(CMakePackageConfigHelpers)
@@ -57,10 +59,6 @@ set(QTXDGX_ICONLOADER_PKG_CONFIG_DESCRIPTION "Qt5XdgIconLader, a Qt5 XDG Icon Lo
 set(QTXDGX_ICONLOADER_PKG_CONFIG_REQUIRES "Qt5Gui >= ${QT_MINIMUM_VERSION}, Qt5Svg >= ${QT_MINIMUM_VERSION}")
 
 set(QTXDGX_INTREE_INCLUDEDIR "${CMAKE_CURRENT_BINARY_DIR}/InTreeBuild/include")
-
-if (NOT CMAKE_BUILD_TYPE)
-    set ( CMAKE_BUILD_TYPE Release )
-endif (NOT CMAKE_BUILD_TYPE)
 
 message(STATUS "Building ${PROJECT_NAME} with Qt ${Qt5Core_VERSION}")
 
