@@ -30,6 +30,9 @@
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
+
+// clazy:excludeall=non-pod-global-static
+
 #ifndef QT_NO_ICON
 #include "xdgiconloader_p.h"
 
@@ -49,10 +52,6 @@
 #include <QImageReader>
 #include <QXmlStreamReader>
 #include <QFileSystemWatcher>
-
-#ifdef Q_DEAD_CODE_FROM_QT4_MAC
-#include <private/qt_cocoa_helpers_mac_p.h>
-#endif
 
 #include <private/qhexstring_p.h>
 
@@ -221,7 +220,7 @@ static quint32 icon_name_hash(const char *p)
 QVector<const char *> QIconCacheGtkReader::lookup(const QStringRef &name)
 {
     QVector<const char *> ret;
-    if (!isValid())
+    if (!isValid() || name.isEmpty())
         return ret;
 
     QByteArray nameUtf8 = name.toUtf8();
@@ -326,11 +325,9 @@ XdgIconTheme::XdgIconTheme(const QString &themeName)
                     dirInfo.maxSize = indexReader.value(directoryKey +
                                                         QLatin1String("/MaxSize"),
                                                         size).toInt();
-#if QT_VERSION >= QT_VERSION_CHECK(5, 9, 0)
                     dirInfo.scale = indexReader.value(directoryKey +
                                                       QLatin1String("/Scale"),
                                                       1).toInt();
-#endif
                     m_keyList.append(dirInfo);
                 }
             }
@@ -626,11 +623,8 @@ void XdgIconLoaderEngine::paint(QPainter *painter, const QRect &rect,
                              QIcon::Mode mode, QIcon::State state)
 {
     QSize pixmapSize = rect.size();
-#if defined(Q_DEAD_CODE_FROM_QT4_MAC)
-    pixmapSize *= qt_mac_get_scalefactor();
-#endif
     const qreal dpr = painter->device()->devicePixelRatioF();
-    painter->drawPixmap(rect, pixmap(pixmapSize * dpr, mode, state));
+    painter->drawPixmap(rect, pixmap(QSizeF(pixmapSize * dpr).toSize(), mode, state));
 }
 
 /*
@@ -639,10 +633,8 @@ void XdgIconLoaderEngine::paint(QPainter *painter, const QRect &rect,
  */
 static bool directoryMatchesSize(const QIconDirInfo &dir, int iconsize, int iconscale)
 {
-#if QT_VERSION >= QT_VERSION_CHECK(5, 9, 0)
     if (dir.scale != iconscale)
         return false;
-#endif
     if (dir.type == QIconDirInfo::Fixed) {
         return dir.size == iconsize;
 
@@ -665,7 +657,6 @@ static bool directoryMatchesSize(const QIconDirInfo &dir, int iconsize, int icon
  */
 static int directorySizeDistance(const QIconDirInfo &dir, int iconsize, int iconscale)
 {
-#if QT_VERSION >= QT_VERSION_CHECK(5, 9, 0)
     const int scaledIconSize = iconsize * iconscale;
     if (dir.type == QIconDirInfo::Fixed) {
         return qAbs(dir.size * dir.scale - scaledIconSize);
@@ -685,26 +676,6 @@ static int directorySizeDistance(const QIconDirInfo &dir, int iconsize, int icon
             return scaledIconSize - dir.maxSize * dir.scale;
         else return 0;
     }
-#else
-    if (dir.type == QIconDirInfo::Fixed) {
-        return qAbs(dir.size - iconsize);
-
-    } else if (dir.type == QIconDirInfo::Scalable) {
-        if (iconsize < dir.minSize)
-            return dir.minSize - iconsize;
-        else if (iconsize > dir.maxSize)
-            return iconsize - dir.maxSize;
-        else
-            return 0;
-
-    } else if (dir.type == QIconDirInfo::Threshold) {
-        if (iconsize < dir.size - dir.threshold)
-            return dir.minSize - iconsize;
-        else if (iconsize > dir.size + dir.threshold)
-            return iconsize - dir.maxSize;
-        else return 0;
-    }
-#endif
 
     Q_ASSERT(1); // Not a valid value
     return INT_MAX;
@@ -821,8 +792,12 @@ QPixmap ScalableEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State 
     if (svgIcon.isNull())
         svgIcon = QIcon(filename);
 
-    // Simply reuse svg icon engine
-    return svgIcon.pixmap(size, mode, state);
+    // Bypass QIcon API, as that will scale by device pixel ratio of the
+    // highest DPR screen since we're not passing on any QWindow.
+    if (QIconEngine *engine = svgIcon.data_ptr() ? svgIcon.data_ptr()->engine : nullptr)
+        return engine->pixmap(size, mode, state);
+
+    return QPixmap();
 }
 
 static const QString STYLE = QStringLiteral("\n.ColorScheme-Text, .ColorScheme-NeutralText {color:%1;}\
@@ -833,7 +808,11 @@ static const QString STYLE = QStringLiteral("\n.ColorScheme-Text, .ColorScheme-N
 
 QPixmap ScalableFollowsColorEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
 {
-    QPixmap pm = svgIcon.pixmap(size, mode, state);
+    QPixmap pm;
+    // see ScalableEntry::pixmap() for the reason
+    if (QIconEngine *engine = svgIcon.data_ptr() ? svgIcon.data_ptr()->engine : nullptr)
+        pm = engine->pixmap(size, mode, state);
+
     // Note: not checking the QIcon::isNull(), because in Qt5.10 the isNull() is not reliable
     // for svg icons desierialized from stream (see https://codereview.qt-project.org/#/c/216086/)
     if (pm.isNull())
@@ -912,13 +891,15 @@ QPixmap ScalableFollowsColorEntry::pixmap(const QSize &size, QIcon::Mode mode, Q
         str_read.setVersion(QDataStream::Qt_4_4);
 
         str_read >> svgIcon;
-        pm = svgIcon.pixmap(size, mode, state);
+        if (QIconEngine *engine = svgIcon.data_ptr() ? svgIcon.data_ptr()->engine : nullptr)
+            pm = engine->pixmap(size, mode, state);
 
         // load the icon directly from file, if still null
         if (pm.isNull())
         {
             svgIcon = QIcon(filename);
-            pm = svgIcon.pixmap(size, mode, state);
+            if (QIconEngine *engine = svgIcon.data_ptr() ? svgIcon.data_ptr()->engine : nullptr)
+                pm = engine->pixmap(size, mode, state);
         }
     }
 
@@ -969,14 +950,11 @@ void XdgIconLoaderEngine::virtual_hook(int id, void *data)
             name = m_info.iconName;
         }
         break;
-#if QT_VERSION >= QT_VERSION_CHECK(5, 7, 0)
     case QIconEngine::IsNullHook:
         {
             *reinterpret_cast<bool*>(data) = m_info.entries.isEmpty();
         }
         break;
-#endif
-#if QT_VERSION >= QT_VERSION_CHECK(5, 9, 0)
     case QIconEngine::ScaledPixmapHook:
         {
             QIconEngine::ScaledPixmapArgument &arg = *reinterpret_cast<QIconEngine::ScaledPixmapArgument*>(data);
@@ -986,7 +964,6 @@ void XdgIconLoaderEngine::virtual_hook(int id, void *data)
             arg.pixmap = entry ? entry->pixmap(arg.size, arg.mode, arg.state) : QPixmap();
         }
         break;
-#endif
     default:
         QIconEngine::virtual_hook(id, data);
     }

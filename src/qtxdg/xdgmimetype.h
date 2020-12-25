@@ -80,11 +80,7 @@ public:
         return !QMimeType::operator==(other);
     }
 
-    void swap(XdgMimeType &other)
-    {
-        QMimeType::swap(other);
-        qSwap(dx, other.dx);
-    }
+    void swap(XdgMimeType &other) noexcept;
 
     //! Destructs the mimetype
     ~XdgMimeType();

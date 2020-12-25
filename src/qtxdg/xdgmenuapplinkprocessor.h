@@ -31,15 +31,17 @@
 #include "xdgmenurules.h"
 #include <QObject>
 #include <QtXml/QDomElement>
-#include <QLinkedList>
 #include <QString>
 #include <QHash>
+#include <memory>
+
+#include <list>
 
 class XdgMenu;
 class XdgMenuAppFileInfo;
 class XdgDesktopFile;
 
-typedef QLinkedList<XdgMenuAppFileInfo*> XdgMenuAppFileInfoList;
+typedef std::list<XdgMenuAppFileInfo*> XdgMenuAppFileInfoList;
 
 typedef QHash<QString, XdgMenuAppFileInfo*> XdgMenuAppFileInfoHash;
 typedef QHashIterator<QString, XdgMenuAppFileInfo*> XdgMenuAppFileInfoHashIterator;
@@ -65,7 +67,7 @@ protected:
 
 private:
     XdgMenuApplinkProcessor* mParent;
-    QLinkedList<XdgMenuApplinkProcessor*> mChilds;
+    std::list<XdgMenuApplinkProcessor*> mChilds;
     XdgMenuAppFileInfoHash mAppFileInfoHash;
     XdgMenuAppFileInfoList mSelected;
     QDomElement mElement;
@@ -80,20 +82,20 @@ class XdgMenuAppFileInfo: public QObject
 {
     Q_OBJECT
 public:
-    explicit XdgMenuAppFileInfo(XdgDesktopFile* desktopFile, const QString& id,  QObject *parent)
-        : QObject(parent)
+    explicit XdgMenuAppFileInfo(std::unique_ptr<XdgDesktopFile> desktopFile, const QString& id,  QObject *parent)
+        : QObject(parent),
+          mDesktopFile{std::move(desktopFile)},
+          mAllocated(false),
+          mId(id)
     {
-        mDesktopFile = desktopFile;
-        mAllocated = false;
-        mId = id;
     }
 
-    XdgDesktopFile* desktopFile() const { return mDesktopFile; }
+    XdgDesktopFile* desktopFile() const { return mDesktopFile.get(); }
     bool allocated() const { return mAllocated; }
     void setAllocated(bool value) { mAllocated = value; }
     QString id() const { return mId; }
 private:
-    XdgDesktopFile* mDesktopFile;
+    std::unique_ptr<XdgDesktopFile> mDesktopFile;
     bool mAllocated;
     QString mId;
 };
