@@ -32,11 +32,11 @@
 
 
 // Helper functions prototypes
-QDomElement findLastElementByTag(const QDomElement element, const QString tagName);
+QDomElement findLastElementByTag(const QDomElement &element, const QString &tagName);
 int childsCount(const QDomElement& element);
 
 
-QDomElement findLastElementByTag(const QDomElement element, const QString tagName)
+QDomElement findLastElementByTag(const QDomElement &element, const QString &tagName)
 {
     QDomNodeList l = element.elementsByTagName(tagName);
     if (l.isEmpty())
@@ -60,15 +60,14 @@ QDomElement findLastElementByTag(const QDomElement element, const QString tagNam
  </DefaultLayout>
  ************************************************/
 XdgMenuLayoutProcessor::XdgMenuLayoutProcessor(QDomElement& element):
-    mElement(element)
+    mElement(element),
+    mDefaultLayout(findLastElementByTag(element, QLatin1String("DefaultLayout")))
 {
     mDefaultParams.mShowEmpty = false;
     mDefaultParams.mInline = false;
     mDefaultParams.mInlineLimit = 4;
     mDefaultParams.mInlineHeader = true;
     mDefaultParams.mInlineAlias = false;
-
-    mDefaultLayout = findLastElementByTag(element, QLatin1String("DefaultLayout"));
 
     if (mDefaultLayout.isNull())
     {
@@ -98,10 +97,9 @@ XdgMenuLayoutProcessor::XdgMenuLayoutProcessor(QDomElement& element):
 
 
 XdgMenuLayoutProcessor::XdgMenuLayoutProcessor(QDomElement& element, XdgMenuLayoutProcessor *parent):
+	mDefaultParams(parent->mDefaultParams),
     mElement(element)
 {
-    mDefaultParams = parent->mDefaultParams;
-
     // DefaultLayout ............................
     QDomElement defaultLayout = findLastElementByTag(element, QLatin1String("DefaultLayout"));
 

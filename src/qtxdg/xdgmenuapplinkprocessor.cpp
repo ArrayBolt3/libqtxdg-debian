@@ -33,20 +33,19 @@
 #include <QDir>
 
 
-XdgMenuApplinkProcessor::XdgMenuApplinkProcessor(QDomElement& element,  XdgMenu* menu, XdgMenuApplinkProcessor *parent) :
-    QObject(parent)
+XdgMenuApplinkProcessor::XdgMenuApplinkProcessor(QDomElement& element,  XdgMenu* menu, XdgMenuApplinkProcessor *parent)
+    : QObject(parent),
+      mParent(parent),
+      mElement(element),
+      mMenu(menu)
 {
-    mElement = element;
-    mParent = parent;
-    mMenu = menu;
-
     mOnlyUnallocated = element.attribute(QLatin1String("onlyUnallocated")) == QLatin1String("1");
 
     MutableDomElementIterator i(element, QLatin1String("Menu"));
     while(i.hasNext())
     {
         QDomElement e = i.next();
-        mChilds.append(new XdgMenuApplinkProcessor(e, mMenu, this));
+        mChilds.push_back(new XdgMenuApplinkProcessor(e, mMenu, this));
     }
 
 }
@@ -83,7 +82,7 @@ void XdgMenuApplinkProcessor::step1()
 
             if (!mRules.checkExclude(i.key(), *file))
             {
-                mSelected.append(i.value());
+                mSelected.push_back(i.value());
             }
 
         }
@@ -192,9 +191,9 @@ void XdgMenuApplinkProcessor::findDesktopFiles(const QString& dirName, const QSt
 
     for (const QFileInfo &file : files)
     {
-        XdgDesktopFile *f = new XdgDesktopFile;
+        auto f = std::make_unique<XdgDesktopFile>();
         if (f->load(file.canonicalFilePath()) && f->isValid())
-            mAppFileInfoHash.insert(prefix + file.fileName(), new XdgMenuAppFileInfo(f, prefix + file.fileName(), this));
+            mAppFileInfoHash.insert(prefix + file.fileName(), new XdgMenuAppFileInfo(std::move(f), prefix + file.fileName(), this));
     }
 
 
