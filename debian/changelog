@@ -1,3 +1,13 @@
+libqtxdg (3.6.0-1) UNRELEASED; urgency=medium
+
+  [ Andrew Lee (李健秋) ]
+  * New upstream version 3.6.0.
+  * refresh debian/libqt5xdg3.symbols file.
+  * Fix unindented lines.
+  * Add salsa-ci.yml file.
+
+ -- Andrew Lee (李健秋) <ajqlee@debian.org>  Fri, 25 Dec 2020 10:53:00 +0800
+
 libqtxdg (3.4.0-1) unstable; urgency=medium
 
   * New upstream version 3.4.0
