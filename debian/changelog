@@ -1,4 +1,4 @@
-libqtxdg (3.6.0-1) UNRELEASED; urgency=medium
+libqtxdg (3.6.0-1) unstable; urgency=medium
 
   [ Andrew Lee (李健秋) ]
   * New upstream version 3.6.0.
