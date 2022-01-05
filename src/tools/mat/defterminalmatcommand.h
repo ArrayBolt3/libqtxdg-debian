@@ -1,6 +1,6 @@
 /*
  * libqtxdg - An Qt implementation of freedesktop.org xdg specs
- * Copyright (C) 2018  Luís Pereira <luis.artur.pereira@gmail.com>
+ * Copyright (C) 2021  Luís Pereira <luis.artur.pereira@gmail.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,34 +18,17 @@
  * Boston, MA  02110-1301  USA
  */
 
+#ifndef DEFTERMINALMATCOMMAND_H
+#define DEFTERMINALMATCOMMAND_H
+
 #include "matcommandinterface.h"
 
-#include "xdgmacros.h"
+class DefTerminalMatCommand : public MatCommandInterface {
+public:
+    explicit DefTerminalMatCommand(QCommandLineParser *parser);
+    ~DefTerminalMatCommand() override;
 
-#include <QCommandLineParser>
+    int run(const QStringList &arguments) override;
+};
 
-MatCommandInterface::MatCommandInterface(const QString &name, const QString &description, QCommandLineParser *parser)
-    : mName(name),
-      mDescription(description),
-      mParser(parser)
-{
-    Q_CHECK_PTR(parser);
-}
-
-MatCommandInterface::~MatCommandInterface() = default;
-
-void MatCommandInterface::showHelp(int exitCode) const
-{
-    if (!mParser)
-        return;
-
-    mParser->showHelp(exitCode);
-}
-
-void MatCommandInterface::showVersion() const
-{
-    if (!mParser)
-        return;
-
-    mParser->showVersion();
-}
+#endif // DEFTERMINALMATCOMMAND_H
