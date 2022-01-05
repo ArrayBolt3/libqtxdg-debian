@@ -1,3 +1,30 @@
+libqtxdg-3.8.0 / 2021-11-04
+===========================
+ * Handle relative paths in qtxdg-desktop-file-start.
+ * Improved error message.
+ * Make sure hicolor is searched before dash fallbacks.
+ * Improved file manager command line handling in qtxdg-mat.
+ * Added default terminal.
+ * Consider XDG_DATA_HOME when computing desktop entry id.
+ * Consider Qt's fallback search paths when finding icons.
+
+libqtxdg-3.7.1 / 2021-04-16
+===========================
+ * Fixed compilation against Qt < 5.14.
+ * Added a nullity check for paint device.
+
+libqtxdg-3.7.0 / 2021-04-15
+===========================
+  * Removed deprecated XdgDesktopFileCache.
+  * Handled Qt 5.15 deprecations.
+  * Use "= default" for trivial constructors/destructors.
+  * Improved readability in container emptiness check.
+  * Ported QStringRef to QStringView.
+  * Moved to Qt5 signal/slot syntax.
+  * Added XTerm as a runtime dependency.
+  * Allow non-detached starting in xdgdesktopfile.
+  * Use QSvgRenderer for SVG icons.
+
 libqtxdg-3.6.0 / 2020-11-01
 ===========================
   * ￼Dropped deprecated QLinkedList.

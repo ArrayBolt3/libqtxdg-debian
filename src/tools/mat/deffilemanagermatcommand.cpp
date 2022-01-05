@@ -88,13 +88,18 @@ static CommandLineParseResult parseCommandLine(QCommandLineParser *parser, DefFi
     QStringList posArgs = parser->positionalArguments();
     posArgs.removeAt(0);
 
-    if (isDefFileManagerNameSet && posArgs.size() > 0) {
+    if (isDefFileManagerNameSet && !posArgs.empty()) {
         *errorMessage = QSL("Extra arguments given: ");
         errorMessage->append(posArgs.join(QLatin1Char(',')));
         return CommandLineError;
     }
 
-    if (isListAvailableSet && (isDefFileManagerNameSet || posArgs.size() > 0)) {
+    if (!isDefFileManagerNameSet && !posArgs.empty()) {
+        *errorMessage = QSL("To set the default file manager use the -s/--set option");
+        return CommandLineError;
+    }
+
+    if (isListAvailableSet && (isDefFileManagerNameSet || !posArgs.empty())) {
         *errorMessage = QSL("list-available can't be used with other options and doesn't take arguments");
         return CommandLineError;
     }
@@ -117,9 +122,7 @@ DefFileManagerMatCommand::DefFileManagerMatCommand(QCommandLineParser *parser)
    Q_CHECK_PTR(parser);
 }
 
-DefFileManagerMatCommand::~DefFileManagerMatCommand()
-{
-}
+DefFileManagerMatCommand::~DefFileManagerMatCommand() = default;
 
 int DefFileManagerMatCommand::run(const QStringList & /*arguments*/)
 {
