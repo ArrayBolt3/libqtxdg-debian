@@ -1,3 +1,11 @@
+libqtxdg (3.8.0-2) experimental; urgency=medium
+
+  * Fix upstream metadata.
+  * Add Rules-Requires-Root: no.
+  * Remove unnecessary -Wl,--as-needed.
+
+ -- ChangZhuo Chen (陳昌倬) <czchen@debian.org>  Sun, 13 Feb 2022 23:24:53 +0800
+
 libqtxdg (3.8.0-1) experimental; urgency=medium
 
   [ Andrew Lee (李健秋) ]
