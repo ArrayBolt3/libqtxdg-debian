@@ -3,6 +3,7 @@ libqtxdg (3.9.1-1) UNRELEASED; urgency=medium
   * New upstream release (Closes: #1013334).
   * Add back symbols file.
   * Update install file.
+  * Add my name to Uploaders.
 
  -- Simon Quigley <tsimonq2@debian.org>  Mon, 27 Jun 2022 22:13:24 -0500
 
