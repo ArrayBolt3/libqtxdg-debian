@@ -8,16 +8,17 @@ project(libqtxdg)
 
 option(BUILD_TESTS "Builds tests" OFF)
 option(BUILD_DEV_UTILS "Builds and install development utils" OFF)
+option(QTXDG_INSTALL_DEFAPPS_CONFIG "Install default app config files" ON)
 
 # additional cmake files
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 set(QTXDG_MAJOR_VERSION 3)
-set(QTXDG_MINOR_VERSION 8)
-set(QTXDG_PATCH_VERSION 0)
+set(QTXDG_MINOR_VERSION 9)
+set(QTXDG_PATCH_VERSION 1)
 set(QTXDG_VERSION_STRING ${QTXDG_MAJOR_VERSION}.${QTXDG_MINOR_VERSION}.${QTXDG_PATCH_VERSION})
 
-set(LXQTBT_MINIMUM_VERSION "0.10.0")
+set(LXQTBT_MINIMUM_VERSION "0.11.0")
 set(QT_MINIMUM_VERSION "5.15.0")
 set(GLIB_MINIMUM_VERSION "2.41.0") # Mime Apps new implementation
 
@@ -30,6 +31,7 @@ include(GNUInstallDirs)             # Standard directories for installation
 include(CMakePackageConfigHelpers)
 include(GenerateExportHeader)
 
+include(LXQtConfigVars)
 include(LXQtPreventInSourceBuilds)
 include(LXQtCreatePkgConfigFile)
 include(LXQtCreatePortableHeaders)
@@ -63,7 +65,13 @@ set(QTXDGX_INTREE_INCLUDEDIR "${CMAKE_CURRENT_BINARY_DIR}/InTreeBuild/include")
 
 message(STATUS "Building ${PROJECT_NAME} with Qt ${Qt5Core_VERSION}")
 
-file(GLOB QTXDG_CONFIG_FILES config/*.conf)
+if (QTXDG_INSTALL_DEFAPPS_CONFIG)
+    file(GLOB QTXDG_CONFIG_FILES config/*.conf)
+    set(QTXDG_DEFAPPS_CONF_INSTALL_DIR
+        "${LXQT_ETC_XDG_DIR}" CACHE PATH "Path to qtxdg default apps conf files install dir")
+    mark_as_advanced(QTXDG_DEFAPPS_CONF_INSTALL_DIR)
+endif()
+
 
 add_subdirectory(src)
 
@@ -158,10 +166,12 @@ install(EXPORT
     COMPONENT Devel
 )
 
-install(FILES ${QTXDG_CONFIG_FILES}
-    DESTINATION "${CMAKE_INSTALL_FULL_DATADIR}/lxqt"
-    COMPONENT Runtime
-)
+if (QTXDG_INSTALL_DEFAPPS_CONFIG)
+    install(FILES ${QTXDG_CONFIG_FILES}
+        DESTINATION "${QTXDG_DEFAPPS_CONF_INSTALL_DIR}"
+        COMPONENT Runtime
+    )
+endif()
 
 # uninstall target
 configure_file(

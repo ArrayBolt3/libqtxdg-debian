@@ -89,7 +89,8 @@ static const QLatin1String iconKey("Icon");
 
 // Helper functions prototypes
 QString &doEscape(QString& str, const QHash<QChar,QChar> &repl);
-QString &doUnEscape(QString& str, const QHash<QChar,QChar> &repl);
+QString &doSimpleUnEscape(QString& str, const QHash<QChar,QChar> &repl);
+QString &doUnEscape(QString& str, const QHash<QChar,QChar> &repl, QList<int> &literals);
 QString &escape(QString& str);
 QString &escapeExec(QString& str);
 QString expandDynamicUrl(QString url);
@@ -97,11 +98,11 @@ QString expandEnvVariables(const QString &str);
 QStringList expandEnvVariables(const QStringList &strs);
 QString findDesktopFile(const QString& dirName, const QString& desktopName);
 QString findDesktopFile(const QString& desktopName);
-static QStringList parseCombinedArgString(const QString &program);
+static QStringList parseCombinedArgString(const QString &program, const QList<int> &literals);
 bool read(const QString &prefix);
 void replaceVar(QString &str, const QString &varName, const QString &after);
-QString &unEscape(QString& str);
-QString &unEscapeExec(QString& str);
+QString &unEscape(QString& str, bool exec);
+QString &unEscapeExec(QString& str, QList<int> &literals);
 
 namespace
 {
@@ -199,7 +200,8 @@ QString &escapeExec(QString& str)
 }
 
 
-QString &doUnEscape(QString& str, const QHash<QChar,QChar> &repl)
+
+QString &doSimpleUnEscape(QString& str, const QHash<QChar,QChar> &repl)
 {
     int n = 0;
     while (true)
@@ -219,13 +221,66 @@ QString &doUnEscape(QString& str, const QHash<QChar,QChar> &repl)
     return str;
 }
 
+// The list of start and end positions of string literals is also found by this function.
+// It is assumed that a string literal starts with a non-escaped, non-quoted single/double
+// quote and ends with the next single/double quote.
+// If a literal has no end, the string is considered malformed.
+QString &doUnEscape(QString& str, const QHash<QChar,QChar> &repl, QList<int> &literals)
+{
+    int n = 0;
+    bool inQuote = false;
+    static const QRegularExpression slashOrLiteralStart(QString::fromLatin1(R"(\\|(?<!\\)('|"))"));
+    while (true)
+    {
+        if (!inQuote) // string literals cannot be double quoted
+        {
+            n = str.indexOf(slashOrLiteralStart, n);
+            if (n < 0)
+                break;
+            if (str.at(n) != QLatin1Char('\\')) // perhaps a literal start
+            {
+                int end = str.indexOf(str.at(n), n + 1);
+                if (end < 0)
+                { // no literal end; the string is malformed
+                    str.clear();
+                    break;
+                }
+                else
+                {
+                    // add the start and end positions to the list
+                    literals << n << end;
+                    // skip the literal
+                    n = end + 1;
+                    continue;
+                }
+            }
+        }
+        else
+            n = str.indexOf(QLatin1String("\\"), n);
+        if (n < 0 || n > str.length() - 2)
+            break;
+
+        if (str.at(n + 1) == QLatin1Char('"'))
+            inQuote = !inQuote;
+
+        if (repl.contains(str.at(n+1)))
+        {
+            str.replace(n, 2, repl.value(str.at(n+1)));
+        }
+
+        n++;
+    }
+
+    return str;
+}
+
 
 /************************************************
  The escape sequences \s, \n, \t, \r, and \\ are supported for values
  of type string and localestring, meaning ASCII space, newline, tab,
  carriage return, and backslash, respectively.
  ************************************************/
-QString &unEscape(QString& str)
+QString &unEscape(QString& str, bool exec)
 {
     QHash<QChar,QChar> repl;
     repl.insert(QLatin1Char('\\'), QLatin1Char('\\'));
@@ -234,7 +289,12 @@ QString &unEscape(QString& str)
     repl.insert(QLatin1Char('t'),  QLatin1Char('\t'));
     repl.insert(QLatin1Char('r'),  QLatin1Char('\r'));
 
-    return doUnEscape(str, repl);
+    if (exec)
+    {
+        QList<int> l;
+        return doUnEscape(str, repl, l);
+    }
+    return doSimpleUnEscape(str, repl);
 }
 
 
@@ -277,9 +337,9 @@ requires the use of four successive backslash characters ("\\\\").
 Likewise, a literal dollar sign in a quoted argument in a desktop entry file
 is unambiguously represented with ("\\$").
  ************************************************/
-QString &unEscapeExec(QString& str)
+QString &unEscapeExec(QString& str, QList<int> &literals)
 {
-    unEscape(str);
+    unEscape(str, true);
     QHash<QChar,QChar> repl;
     // The parseCombinedArgString() splits the string by the space symbols,
     // we temporarily replace them on the special characters.
@@ -305,7 +365,7 @@ QString &unEscapeExec(QString& str)
     repl.insert(QLatin1Char(')'), QLatin1Char(')'));    // parenthesis (")")
     repl.insert(QLatin1Char('`'), QLatin1Char('`'));    // backtick character ("`").
 
-    return doUnEscape(str, repl);
+    return doUnEscape(str, repl, literals);
 }
 
 namespace
@@ -749,7 +809,7 @@ QVariant XdgDesktopFile::value(const QString& key, const QVariant& defaultValue)
     if (res.type() == QVariant::String)
     {
         QString s = res.toString();
-        return unEscape(s);
+        return unEscape(s, false);
     }
 
     return res;
@@ -1000,17 +1060,32 @@ bool XdgDesktopFile::startDetached(const QString& url) const
 }
 
 
-static QStringList parseCombinedArgString(const QString &program)
+static QStringList parseCombinedArgString(const QString &program, const QList<int> &literals)
 {
     QStringList args;
     QString tmp;
     int quoteCount = 0;
     bool inQuote = false;
+    bool isLiteral = false;
 
     // handle quoting. tokens can be surrounded by double quotes
     // "hello world". three consecutive double quotes represent
     // the quote character itself.
     for (int i = 0; i < program.size(); ++i) {
+        // skip string literals
+        int n = literals.indexOf(i);
+        if (n >= 0 && n % 2 == 0) {
+            // This is the start of a string literal.
+            // Add the literal to the arguments and jump to its end.
+            int length = literals.at(n + 1) - literals.at(n) - 1;
+            if (length > 0) {
+                tmp += program.mid(literals.at(n) + 1, length);
+                isLiteral = true;
+            }
+            i = literals.at(n + 1);
+            continue;
+        }
+
         if (program.at(i) == QLatin1Char('"')) {
             ++quoteCount;
             if (quoteCount == 3) {
@@ -1027,6 +1102,12 @@ static QStringList parseCombinedArgString(const QString &program)
         }
         if (!inQuote && program.at(i).isSpace()) {
             if (!tmp.isEmpty()) {
+                if (isLiteral) {
+                    // add a dummy argument to mark the next argument as a string literal
+                    // and to prevent its expanding in expandExecString()
+                    args += QString();
+                    isLiteral = false;
+                }
                 args += tmp;
                 tmp.clear();
             }
@@ -1103,11 +1184,25 @@ QStringList XdgDesktopFile::expandExecString(const QStringList& urls) const
     QStringList result;
 
     QString execStr = value(execKey).toString();
-    unEscapeExec(execStr);
-    const QStringList tokens = parseCombinedArgString(execStr);
+    QList<int> literals;
+    unEscapeExec(execStr, literals);
+    const QStringList tokens = parseCombinedArgString(execStr, literals);
 
+    bool isLiteral = false;
     for (QString token : tokens)
     {
+        if (token.isEmpty())
+        { // a dummy argument marked by parseCombinedArgString()
+            isLiteral = true;
+            continue;
+        }
+        else if (isLiteral)
+        { // do not expand string literals
+            result << token;
+            isLiteral = false;
+            continue;
+        }
+
         // The parseCombinedArgString() splits the string by the space symbols,
         // we temporarily replaced them on the special characters.
         // Now we reverse it.
