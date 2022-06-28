@@ -1,3 +1,9 @@
+libqtxdg (3.9.1-1) UNRELEASED; urgency=medium
+
+  * New upstream release.
+
+ -- Simon Quigley <tsimonq2@debian.org>  Mon, 27 Jun 2022 22:13:24 -0500
+
 libqtxdg (3.8.0-2) experimental; urgency=medium
 
   * Fix upstream metadata.
