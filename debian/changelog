@@ -1,6 +1,6 @@
 libqtxdg (3.9.1-1) UNRELEASED; urgency=medium
 
-  * New upstream release.
+  * New upstream release (Closes: #1013334).
   * Add back symbols file.
   * Update install file.
 
