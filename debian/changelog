@@ -1,11 +1,11 @@
-libqtxdg (3.9.1-1) UNRELEASED; urgency=medium
+libqtxdg (3.9.1-1) experimental; urgency=medium
 
   * New upstream release (Closes: #1013334).
   * Add back symbols file.
   * Update install file.
   * Add my name to Uploaders.
 
- -- Simon Quigley <tsimonq2@debian.org>  Mon, 27 Jun 2022 22:13:24 -0500
+ -- Simon Quigley <tsimonq2@debian.org>  Mon, 27 Jun 2022 22:28:56 -0500
 
 libqtxdg (3.8.0-2) experimental; urgency=medium
 
